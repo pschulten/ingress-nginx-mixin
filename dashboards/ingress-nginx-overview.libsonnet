@@ -57,10 +57,28 @@ local tbOverride = tbStandardOptions.override;
       query.refresh.onLoad() +
       query.refresh.onTime(),
 
+    local clusterVariable =
+      query.new(
+        'cluster',
+        'label_values(up{job="$job"}, %(clusterLabel)s)' % $._config
+      ) +
+      query.withDatasourceFromVariable(datasourceVariable) +
+      query.withSort(1) +
+      query.generalOptions.withLabel('Cluster') +
+      query.selectionOptions.withMulti(false) +
+      query.selectionOptions.withIncludeAll(false) +
+      query.refresh.onLoad() +
+      (
+        if $._config.showMultiCluster
+        then query.generalOptions.showOnDashboard.withLabelAndValue()
+        else query.generalOptions.showOnDashboard.withNothing()
+      ) +
+      query.refresh.onTime(),
+
     local namespaceVariable =
       query.new(
         'namespace',
-        'label_values(nginx_ingress_controller_config_hash{job="$job"}, controller_namespace)',
+        'label_values(nginx_ingress_controller_config_hash{job="$job", %(clusterLabel)s="$cluster"}, controller_namespace)' % $._config
       ) +
       query.withDatasourceFromVariable(datasourceVariable) +
       query.withSort(1) +
@@ -73,7 +91,7 @@ local tbOverride = tbStandardOptions.override;
     local controllerClassVariable =
       query.new(
         'controller_class',
-        'label_values(nginx_ingress_controller_config_hash{job="$job", controller_namespace=~"$namespace"}, controller_class)'
+        'label_values(nginx_ingress_controller_config_hash{job="$job", %(clusterLabel)s="$cluster", controller_namespace=~"$namespace"}, controller_class)' % $._config
       ) +
       query.withDatasourceFromVariable(datasourceVariable) +
       query.withSort(1) +
@@ -86,7 +104,7 @@ local tbOverride = tbStandardOptions.override;
     local controllerVariable =
       query.new(
         'controller',
-        'label_values(nginx_ingress_controller_config_hash{job="$job", controller_namespace=~"$namespace", controller_class=~"$controller_class"}, controller_pod)'
+        'label_values(nginx_ingress_controller_config_hash{job="$job", %(clusterLabel)s="$cluster", controller_namespace=~"$namespace", controller_class=~"$controller_class"}, controller_pod)' % $._config
       ) +
       query.withDatasourceFromVariable(datasourceVariable) +
       query.withSort(1) +
@@ -99,7 +117,7 @@ local tbOverride = tbStandardOptions.override;
     local ingressExportedNamespaceVariable =
       query.new(
         'exported_namespace',
-        'label_values(nginx_ingress_controller_requests{job="$job", namespace=~"$namespace", controller_class=~"$controller_class", controller_pod=~"$controller"}, exported_namespace)'
+        'label_values(nginx_ingress_controller_requests{job="$job", %(clusterLabel)s="$cluster", namespace=~"$namespace", controller_class=~"$controller_class", controller_pod=~"$controller"}, exported_namespace)' % $._config
       ) +
       query.withDatasourceFromVariable(datasourceVariable) +
       query.withSort(1) +
@@ -112,7 +130,7 @@ local tbOverride = tbStandardOptions.override;
     local ingressVariable =
       query.new(
         'ingress',
-        'label_values(nginx_ingress_controller_requests{job="$job", namespace=~"$namespace", controller_class=~"$controller_class", controller_pod=~"$controller", exported_namespace=~"$exported_namespace"}, ingress)'
+        'label_values(nginx_ingress_controller_requests{job="$job", %(clusterLabel)s="$cluster", namespace=~"$namespace", controller_class=~"$controller_class", controller_pod=~"$controller", exported_namespace=~"$exported_namespace"}, ingress)' % $._config
       ) +
       query.withDatasourceFromVariable(datasourceVariable) +
       query.withSort(1) +
@@ -136,6 +154,7 @@ local tbOverride = tbStandardOptions.override;
     local variables = [
       datasourceVariable,
       jobVariable,
+      clusterVariable,
       namespaceVariable,
       controllerClassVariable,
       controllerVariable,
@@ -150,6 +169,7 @@ local tbOverride = tbStandardOptions.override;
           irate(
             nginx_ingress_controller_requests{
               job=~"$job",
+              %(clusterLabel)s="$cluster",
               namespace=~"$namespace",
               controller_pod=~"$controller",
               controller_class=~"$controller_class"
@@ -157,7 +177,7 @@ local tbOverride = tbStandardOptions.override;
           )
         ), 0.001
       )
-    |||,
+    ||| % $._config,
     local controllerRequestVolumeStatPanel =
       statPanel.new(
         'Controller Request Volume',
@@ -182,13 +202,14 @@ local tbOverride = tbStandardOptions.override;
         avg_over_time(
           nginx_ingress_controller_nginx_process_connections{
             job=~"$job",
+            %(clusterLabel)s="$cluster",
             controller_pod=~"$controller",
             controller_class=~"$controller_class",
             controller_namespace=~"$namespace"
           }[$__rate_interval]
         )
       )
-    |||,
+    ||| % $._config,
     local controllerConnectionsStatPanel =
       statPanel.new(
         'Controller Connections',
@@ -214,6 +235,7 @@ local tbOverride = tbStandardOptions.override;
         rate(
           nginx_ingress_controller_requests{
             job=~"$job",
+            %(clusterLabel)s="$cluster",
             controller_pod=~"$controller",
             controller_class=~"$controller_class",
             namespace=~"$namespace",
@@ -227,6 +249,7 @@ local tbOverride = tbStandardOptions.override;
         rate(
           nginx_ingress_controller_requests{
             job=~"$job",
+            %(clusterLabel)s="$cluster",
             controller_pod=~"$controller",
             controller_class=~"$controller_class",
             exported_namespace=~"$exported_namespace",
@@ -234,7 +257,7 @@ local tbOverride = tbStandardOptions.override;
           }[$__rate_interval]
         )
       )
-    |||,
+    ||| % $._config,
     local controllerSuccessRateStatPanel =
       statPanel.new(
         'Controller Success Rate (non $error_codes-xx responses)',
@@ -261,6 +284,7 @@ local tbOverride = tbStandardOptions.override;
         irate(
           nginx_ingress_controller_success{
             job=~"$job",
+            %(clusterLabel)s="$cluster",
             controller_pod=~"$controller",
             controller_class=~"$controller_class",
             controller_namespace=~"$namespace"
@@ -289,6 +313,7 @@ local tbOverride = tbStandardOptions.override;
       count(
         nginx_ingress_controller_config_last_reload_successful{
           job=~"$job",
+          %(clusterLabel)s="$cluster",
           controller_pod=~"$controller",
           controller_namespace=~"$namespace"
         } == 0
@@ -319,6 +344,7 @@ local tbOverride = tbStandardOptions.override;
           irate(
             nginx_ingress_controller_requests{
               job=~"$job",
+              %(clusterLabel)s="$cluster",
               controller_pod=~"$controller",
               controller_class=~"$controller_class",
               controller_namespace=~"$namespace",
@@ -362,6 +388,7 @@ local tbOverride = tbStandardOptions.override;
         rate(
           nginx_ingress_controller_requests{
             job=~"$job",
+            %(clusterLabel)s="$cluster",
             controller_pod=~"$controller",
             controller_class=~"$controller_class",
             namespace=~"$namespace",
@@ -376,6 +403,7 @@ local tbOverride = tbStandardOptions.override;
         rate(
           nginx_ingress_controller_requests{
             job=~"$job",
+            %(clusterLabel)s="$cluster",
             controller_pod=~"$controller",
             controller_class=~"$controller_class",
             namespace=~"$namespace",
@@ -419,6 +447,7 @@ local tbOverride = tbStandardOptions.override;
           rate(
             nginx_ingress_controller_request_duration_seconds_bucket{
               job=~"$job",
+              %(clusterLabel)s="$cluster",
               ingress!="",
               controller_pod=~"$controller",
               controller_class=~"$controller_class",
@@ -429,7 +458,7 @@ local tbOverride = tbStandardOptions.override;
           )
         ) by (le, job, ingress, exported_namespace)
       )
-    |||,
+    ||| % $._config,
     local ingress90thPercentileResponseQuery = std.strReplace(ingress50thPercentileResponseQuery, '0.50', '0.90'),
     local ingress99thPercentileResponseQuery = std.strReplace(ingress50thPercentileResponseQuery, '0.50', '0.99'),
 
@@ -439,6 +468,7 @@ local tbOverride = tbStandardOptions.override;
         irate(
           nginx_ingress_controller_request_size_sum{
             job=~"$job",
+            %(clusterLabel)s="$cluster",
             ingress!="",
             controller_pod=~"$controller",
             controller_class=~"$controller_class",
@@ -448,7 +478,7 @@ local tbOverride = tbStandardOptions.override;
           }[$__rate_interval]
         )
       ) by (job, ingress, exported_namespace)
-    |||,
+    ||| % $._config,
     local ingressResponseSizeQuery = std.strReplace(ingressRequestSizeQuery, 'request', 'response'),
 
     local ingressResponseTable =
@@ -557,6 +587,7 @@ local tbOverride = tbStandardOptions.override;
       avg(
         nginx_ingress_controller_ssl_expire_time_seconds{
           job=~"$job",
+          %(clusterLabel)s="$cluster",
           pod=~"$controller"
         }
       ) by (host) - time()

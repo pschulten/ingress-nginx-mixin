@@ -9,6 +9,10 @@ local annotation = g.dashboard.annotation;
       __requires: [],
     },
 
+    // Opt-in to multiCluster dashboards by overriding this and the clusterLabel.
+    showMultiCluster: false,
+    clusterLabel: 'cluster',
+
     // Selectors are inserted between {} in Prometheus queries.
     ingressNginxSelector: 'job=~"ingress-nginx-controller-metrics"',
 
